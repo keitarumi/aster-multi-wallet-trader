@@ -5,14 +5,22 @@ trading_params:
     - BTCUSDT
     - ETHUSDT
     - ASTERUSDT
-    - SOLUSDT
+    # - SOLUSDT
 
   # 並列トレードモード（複数ウォレットペアで同時に取引）
-  # 複雑になるため現在は無効化推奨
+  # 複雑になるため現在は無効化
   # parallel_trading_enabled: false
 
-  # 基本ポジションサイズ（USDT建て）
-  base_position_size_usdt: 100
+  # シンボルごとのポジションサイズ（USDT建て）
+  # 各シンボルで異なるサイズを設定可能
+  position_sizes:
+    BTCUSDT: 10000      
+    ETHUSDT: 2000      
+    ASTERUSDT: 1000   
+    SOLUSDT: 100      
+
+  # デフォルトポジションサイズ（上記で指定されていないシンボル用）
+  default_position_size_usdt: 500
 
   # ポジションサイズの変動幅（0.05 = 5%のランダム変動）
   position_size_variance: 0.3
@@ -23,18 +31,28 @@ trading_params:
   # 最大ポジション保有時間（分）
   max_hold_time_minutes: 1
 
-  # 取引間の最小待機時間（秒）
-  min_wait_between_trades_seconds: 60
+  # 並列取引用（未実装用のパラメータ）
+  # # 取引間の最小待機時間（秒）
+  # min_wait_between_trades_seconds: 60
 
-  # 取引間の最大待機時間（秒）
-  max_wait_between_trades_seconds: 180
+  # # 取引間の最大待機時間（秒）
+  # max_wait_between_trades_seconds: 180
+
+  # トレーディングラウンド間のクールダウン時間（秒）
+  # 全ポジションクローズ後、次のラウンド開始までの待機時間
+  min_cooldown_between_rounds_seconds: 10
+  max_cooldown_between_rounds_seconds: 30
 
   # ウォレット間の取引実行ディレイ（秒）
   # 両建てを同時にやるとbot判定されそうなのでそれを回避するためのディレイ
   wallet_execution_delay: 1
 
   # レバレッジ倍率
-  leverage: 10
+  leverage: 20
+
+  # 最小注文サイズ（USDT建て）
+  # 取引所の最小注文要件を満たすため
+  minimum_order_size_usdt: 100
 
 # API設定
 api_settings:
@@ -73,4 +91,4 @@ discord:
   daily_summary_hour: 9
 
   # 残高警告しきい値（USDT）
-  low_balance_threshold: 10000
+  low_balance_threshold: 100

@@ -54,7 +54,7 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxx/xxx
 **重要**:
 - 最低2つのウォレットが必要（両建てのため）
 - ウォレットは必ずアルファベット順（A, B, C...）で追加
-- 各ウォレットに最低$10 USDTの残高が必要
+- 各ウォレットに最低$100 USDTの残高が必要
 
 ### 3. 設定ファイル（config.yaml）
 
@@ -68,9 +68,18 @@ trading_params:
     - ASTERUSDT
     - SOLUSDT
 
-  # ポジションサイズ設定
-  base_position_size_usdt: 100        # 基本ポジションサイズ（USDT）
-  position_size_variance: 0.05        # ランダム変動幅（5% = 0.05）
+  # シンボルごとのポジションサイズ設定（USDT）
+  position_sizes:
+    BTCUSDT: 500      # BTC用のポジションサイズ
+    ETHUSDT: 500      # ETH用のポジションサイズ
+    ASTERUSDT: 1000   # ASTER用のポジションサイズ
+    SOLUSDT: 500      # SOL用のポジションサイズ
+
+  # デフォルトポジションサイズ（上記で指定されていないシンボル用）
+  default_position_size_usdt: 500
+
+  # ポジションサイズの変動幅
+  position_size_variance: 0.3         # ランダム変動幅（30% = 0.3）
 
   # ポジション保有時間（分）
   min_hold_time_minutes: 5            # 最小保有時間
@@ -95,81 +104,134 @@ discord:
 
 ## 📊 使い方
 
-### メイン機能
-
-#### 1. ウォレット検出テスト
+### メイン実行コマンド
 
 ```bash
-python3 test/test_wallet_detection.py
+# トレーディングを開始
+python3 main.py trade
+
+# システムテスト
+python3 main.py test
 ```
 
-#### 2. 相対トレードの実行
+## 📝 トレーディングロジック詳細
 
-```bash
-python3 multi_wallet_trader.py
+### 1. チーム型取引システム
+
+#### 1.1 ウォレットチーム分割
+```
+例: 4ウォレット (A, B, C, D) の場合
+- パターン1: [A] vs [B, C, D] (1:3分割)
+- パターン2: [A, B] vs [C, D] (2:2分割)
+- パターン3: [A, C] vs [B, D] (シャッフル後2:2)
+```
+- 毎ラウンドでランダムにチーム構成を変更
+- 最低各チーム1ウォレット必須
+- BOT検出を回避するため同じパターンを繰り返さない
+
+#### 1.2 数量分配アルゴリズム
+```python
+総ポジション = 1000 USDT相当
+ロングチーム(2ウォレット) → [600 USDT, 400 USDT]
+ショートチーム(2ウォレット) → [300 USDT, 700 USDT]
+※ ロング合計 = ショート合計 = 1000 USDT
+```
+- チーム内でランダムな比率で分配
+- 最小注文サイズ（$100 USDT）を下回らないよう調整
+- 合計値が完全に一致するよう最後のウォレットで微調整
+
+### 2. 取引実行プロセス
+
+#### 2.1 ポジションオープンシーケンス
+```
+時刻 00:00:00 - ロングチーム実行開始
+├─ 00:00:00 - Wallet A: BUY 0.010 BTC
+├─ 00:00:01 - Wallet C: BUY 0.006 BTC (1秒遅延)
+├─ 00:00:02 - チーム間待機 (1秒)
+└─ 00:00:03 - ショートチーム実行開始
+   ├─ 00:00:03 - Wallet B: SELL 0.008 BTC
+   └─ 00:00:04 - Wallet D: SELL 0.008 BTC (1秒遅延)
 ```
 
-- 自動的に.envから有効なウォレットを検出
-- 残高が$10以上のウォレットのみ使用
-- `Ctrl+C`で安全に停止（全ポジションを自動クローズ）
-
-#### 3. 2ウォレットテスト
-
-```bash
-python3 test/test_two_wallets.py
+#### 2.2 ポジションクローズシーケンス
+```
+時刻 00:01:00 - クローズ開始（保有時間1分後）
+├─ 00:01:00 - Wallet A: クローズ
+├─ 00:01:01 - Wallet C: クローズ
+├─ 00:01:02 - Wallet B: クローズ
+└─ 00:01:03 - Wallet D: クローズ
 ```
 
-#### 4. シンプルな取引テスト
+### 3. リスク管理メカニズム
 
-```bash
-python3 test/test_simple_trade.py
+#### 3.1 残高チェック
+- 起動時: $100 USDT未満のウォレットは自動除外
+- 実行中: 残高不足時は該当ウォレットをスキップ
+- 警告: Discord通知で残高低下を報告
+
+#### 3.2 エラーハンドリング
+- **部分的失敗**: 一部の注文が失敗した場合、成功した注文をロールバック
+- **API エラー**: 3回リトライ後、次のラウンドまで待機
+- **緊急停止**: Ctrl+C で全ポジションを安全にクローズ
+
+#### 3.3 最小注文サイズ保証
+```
+BTC: 最小 0.001 BTC または $100 USDT の大きい方
+ETH: 最小 0.01 ETH または $100 USDT の大きい方
+SOL: 最小 1 SOL または $100 USDT の大きい方
 ```
 
-### Discord通知
+### 4. タイミング制御
 
-#### 1. Webhook接続テスト
+#### 4.1 各種遅延設定
+- **wallet_execution_delay**: ウォレット間の実行遅延（1秒）
+- **ポジション保有時間**: 1-1分（設定可能）
+- **ラウンド間クールダウン**: 10-30秒（ランダム）
 
-```bash
-python3 test/test_discord_webhook.py
+#### 4.2 自然な取引パターン
+```
+ラウンド1: BTC取引 → 70秒待機
+ラウンド2: ETH取引 → 25秒待機
+ラウンド3: ASTER取引 → 18秒待機
+```
+- 銘柄選択はランダム
+- 待機時間もランダム
+- 人間らしい不規則性を演出
+
+### 5. データベース記録
+
+#### 5.1 記録される情報
+- **trades テーブル**: 個別の売買記録
+- **positions テーブル**: ヘッジポジション情報
+- **position_trades テーブル**: ポジションと取引の紐付け
+- **daily_summary テーブル**: 日次統計
+
+#### 5.2 パフォーマンス分析
+```sql
+-- 成功率計算
+SELECT COUNT(*) as total,
+       SUM(CASE WHEN total_pnl >= 0 THEN 1 ELSE 0 END) as profitable
+FROM positions WHERE status = 'CLOSED';
 ```
 
-#### 2. 単発レポート送信
+### 6. Discord通知
 
-```bash
-python3 discord_reporter.py test
+#### 6.1 通知タイミング
+- ポジションオープン時
+- ポジションクローズ時
+- エラー発生時
+- 定期レポート（1時間毎）
+- 日次サマリー（毎朝9時）
+
+#### 6.2 通知内容
 ```
-
-#### 3. 定期レポート実行
-
-```bash
-python3 discord_reporter.py
+📈 Position Opened
+Symbol: BTCUSDT
+Long Team: Wallet A (0.006), Wallet C (0.004)
+Short Team: Wallet B (0.007), Wallet D (0.003)
+Total: 0.010 BTC
+Hold Time: 1.0 minutes
 ```
-
-## 📝 トレーディングロジック
-
-### 取引フロー
-
-1. **ウォレットペア選択**: ポジションを持っていないウォレットからランダムに2つ選択
-2. **銘柄選択**: 取引中でない銘柄をランダムに選択
-3. **ポジションオープン**:
-   - ウォレットA: ロングポジション
-   - 1秒待機
-   - ウォレットB: ショートポジション
-4. **ポジション保有**: 5-10分のランダムな時間
-5. **ポジションクローズ**:
-   - ウォレットA: ポジションクローズ
-   - 1秒待機
-   - ウォレットB: ポジションクローズ
-6. **待機**: 60-180秒のランダムな待機時間
-7. **繰り返し**: 1に戻る
-
-### ポジションサイズ計算
-
-- 基本サイズ: 100 USDT
-- 変動: ±5%（デフォルト）
-- 精度調整:
-  - BTC/ETH: 小数点3桁（0.001）
-  - SOL/ASTER: 小数点2桁（0.01）
 
 ## 🔍 トラブルシューティング
 
@@ -214,18 +276,29 @@ tail -f logs/trading.log
 
 ```
 asterdex/
-├── multi_wallet_trader.py   # メインの取引システム
-├── discord_reporter.py      # Discord通知機能
+├── main.py                 # メインエントリーポイント
 ├── config.yaml             # 設定ファイル
 ├── .env                    # 環境変数（APIキー）
 ├── requirements.txt        # 依存関係
+├── src/                    # ソースコード
+│   ├── multi_wallet_trader.py   # メインの取引システム
+│   ├── discord_reporter.py      # Discord通知機能
+│   └── database_manager.py      # データベース管理クラス
+├── utils/                  # ユーティリティ
+│   └── db_query.py        # データベースクエリツール
+├── scripts/                # スクリプト
+│   └── fetch_prices.py    # 価格取得スクリプト
 ├── test/                   # テストスクリプト
 │   ├── test_simple_trade.py
 │   ├── test_two_wallets.py
+│   ├── test_team_trading.py
 │   ├── test_wallet_detection.py
 │   └── test_discord_webhook.py
-└── logs/                   # ログファイル
-    └── trading.log
+├── data/                   # データファイル
+│   └── trades.db          # 取引履歴データベース（自動生成）
+├── logs/                   # ログファイル
+│   └── trading.log
+└── docs/                   # ドキュメント
 ```
 
 ## 🔄 アップデート

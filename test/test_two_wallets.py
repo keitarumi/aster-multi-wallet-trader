@@ -1,4 +1,6 @@
 import warnings
+import sys
+import os
 warnings.filterwarnings('ignore')
 
 import yaml
@@ -15,7 +17,6 @@ from colorama import init, Fore, Style
 from dotenv import load_dotenv
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 init(autoreset=True)
 load_dotenv()

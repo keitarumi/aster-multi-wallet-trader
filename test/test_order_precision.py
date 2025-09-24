@@ -1,4 +1,6 @@
 import requests
+import sys
+import os
 import os
 from dotenv import load_dotenv
 

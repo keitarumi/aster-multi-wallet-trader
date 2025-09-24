@@ -1,11 +1,12 @@
 import os
 import sys
+import os
+import sys
 from dotenv import load_dotenv
 import requests
 from datetime import datetime
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 load_dotenv()
 

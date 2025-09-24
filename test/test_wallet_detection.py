@@ -1,10 +1,11 @@
 import os
 import sys
+import os
+import sys
 from dotenv import load_dotenv
 from colorama import init, Fore, Style
 
 # Add parent directory to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 init(autoreset=True)
 load_dotenv()
