@@ -14,9 +14,70 @@ from itertools import combinations
 import requests
 from colorama import init, Fore, Style
 from dotenv import load_dotenv
+import json
 
 init(autoreset=True)
 load_dotenv()
+
+
+class DiscordNotifier:
+    """Discord notification handler"""
+
+    def __init__(self, webhook_url: str, config: dict):
+        self.webhook_url = webhook_url
+        self.config = config
+
+    def send_embed(self, embed: dict):
+        """Send embed to Discord"""
+        try:
+            response = requests.post(
+                self.webhook_url,
+                json={"embeds": [embed]},
+                headers={'Content-Type': 'application/json'}
+            )
+            response.raise_for_status()
+        except Exception as e:
+            logging.error(f"Failed to send Discord notification: {e}")
+
+    def send_position_open_notification(self, symbol: str, wallet_long: str, wallet_short: str, quantity: float, hold_time: float):
+        """Send notification when position is opened"""
+        embed = {
+            "title": "📈 Position Opened",
+            "color": 0x00ff00,
+            "fields": [
+                {"name": "Symbol", "value": symbol, "inline": True},
+                {"name": "Quantity", "value": str(quantity), "inline": True},
+                {"name": "Hold Time", "value": f"{hold_time:.1f} min", "inline": True},
+                {"name": "Long Position", "value": wallet_long, "inline": True},
+                {"name": "Short Position", "value": wallet_short, "inline": True}
+            ],
+            "timestamp": datetime.now().isoformat(),
+            "footer": {"text": "Aster Multi-Wallet Trader"}
+        }
+        self.send_embed(embed)
+
+    def send_position_close_notification(self, symbol: str, positions: list, wallets: dict):
+        """Send notification when position is closed"""
+        embed = {
+            "title": "📉 Position Closed",
+            "color": 0xffaa00,
+            "fields": [
+                {"name": "Symbol", "value": symbol, "inline": True},
+                {"name": "Closed Positions", "value": f"{len(positions)} positions", "inline": True}
+            ],
+            "timestamp": datetime.now().isoformat(),
+            "footer": {"text": "Aster Multi-Wallet Trader"}
+        }
+
+        for pos in positions:
+            wallet_name = wallets.get(pos['wallet'], pos['wallet'])
+            embed['fields'].append({
+                "name": wallet_name,
+                "value": f"{pos['side']} {pos['quantity']}",
+                "inline": True
+            })
+
+        self.send_embed(embed)
 
 class WalletManager:
     def __init__(self, wallet_id: str, api_settings: dict):
@@ -122,6 +183,7 @@ class MultiWalletTrader:
         self.active_positions = {}
         self.position_timers = {}
         self.round_counter = 0
+        self.discord_notifier = self._setup_discord()
 
     def setup_logging(self):
         """Setup logging configuration"""
@@ -185,6 +247,16 @@ class MultiWalletTrader:
         logging.info(f"\n📊 Active wallets: {len(valid_wallets)}")
 
         return valid_wallets
+
+    def _setup_discord(self) -> Optional[object]:
+        """Setup Discord notifications if webhook URL is available"""
+        webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
+        if webhook_url:
+            logging.info("📢 Discord notifications enabled")
+            return DiscordNotifier(webhook_url, self.config.get('discord', {}))
+        else:
+            logging.info("🔕 Discord notifications disabled (no webhook URL)")
+            return None
 
     def get_available_pairs(self) -> List[Tuple[str, str]]:
         """Get wallet pairs that don't have active positions"""
@@ -295,6 +367,16 @@ class MultiWalletTrader:
         logging.info(f"  {wallet_b.name}: SHORT {quantity}")
         logging.info(f"  Hold time: {hold_time:.1f} minutes")
 
+        # Send Discord notification for position open
+        if self.discord_notifier and self.config.get('discord', {}).get('send_on_position_open', False):
+            self.discord_notifier.send_position_open_notification(
+                symbol=symbol,
+                wallet_long=wallet_a.name,
+                wallet_short=wallet_b.name,
+                quantity=quantity,
+                hold_time=hold_time
+            )
+
         return True
 
     def close_hedge_position(self, symbol: str):
@@ -325,6 +407,14 @@ class MultiWalletTrader:
                 logging.info(f"{Fore.YELLOW}Closed position:{Style.RESET_ALL} {wallet.name} - {symbol}")
 
         if success:
+            # Send Discord notification for position close
+            if self.discord_notifier and self.config.get('discord', {}).get('send_on_position_close', False):
+                self.discord_notifier.send_position_close_notification(
+                    symbol=symbol,
+                    positions=positions,
+                    wallets={pos['wallet']: self.wallets[pos['wallet']].name for pos in positions}
+                )
+
             del self.active_positions[symbol]
             del self.position_timers[symbol]
 
@@ -373,16 +463,34 @@ class MultiWalletTrader:
         logging.info(f"Wallets: {len(self.wallets)}")
         logging.info(f"Symbols: {', '.join(self.symbols)}")
 
+        # Log parallel trading mode status
+        parallel_mode = self.config['trading_params'].get('parallel_trading_enabled', False)
+        logging.info(f"Parallel trading: {Fore.GREEN + 'ENABLED' if parallel_mode else Fore.YELLOW + 'DISABLED'}{Style.RESET_ALL}")
+
         try:
             while True:
                 self.check_positions_for_closing()
 
-                if not self.active_positions:
-                    logging.info(f"{Fore.BLUE}All positions closed. Starting new round...{Style.RESET_ALL}")
-                    self.execute_trading_round()
+                if parallel_mode:
+                    # Parallel mode: can open new positions even with active ones
+                    available_pairs = self.get_available_pairs()
+                    available_symbols = self.get_available_symbols()
+
+                    if available_pairs and available_symbols:
+                        logging.info(f"{Fore.BLUE}Starting new position (parallel mode)...{Style.RESET_ALL}")
+                        self.execute_trading_round()
+                    else:
+                        logging.info(f"Active positions: {list(self.active_positions.keys())}")
+                        logging.info(f"Available pairs: {len(available_pairs)}, Available symbols: {len(available_symbols)}")
+                        time.sleep(30)
                 else:
-                    logging.info(f"Active positions: {list(self.active_positions.keys())}")
-                    time.sleep(30)
+                    # Sequential mode: wait for all positions to close
+                    if not self.active_positions:
+                        logging.info(f"{Fore.BLUE}All positions closed. Starting new round...{Style.RESET_ALL}")
+                        self.execute_trading_round()
+                    else:
+                        logging.info(f"Active positions: {list(self.active_positions.keys())}")
+                        time.sleep(30)
 
         except KeyboardInterrupt:
             logging.info(f"\n{Fore.RED}Shutting down...{Style.RESET_ALL}")

@@ -5,9 +5,9 @@
 ## 🚀 特徴
 
 - **自動ウォレット検出**: .envファイルから複数ウォレットを自動認識
-- **複雑な相対トレード**: 異なるウォレットペアで異なる銘柄を同時に両建て
+- **相対トレード**: 異なるウォレットペアで異なる銘柄を順次両建て
 - **自然な取引パターン**: ランダムな遅延とポジションサイズの変動
-- **Discord通知**: 残高レポート、取引通知、エラー通知
+- **Discord通知**: ポジションオープン/クローズ、残高レポート、エラー通知
 - **リスク管理**: 残高不足ウォレットの自動除外
 
 ## 📋 必要条件
@@ -86,7 +86,8 @@ trading_params:
 # Discord通知設定
 discord:
   report_interval_minutes: 60         # 定期レポート間隔
-  send_on_trade: true                 # 取引時通知
+  send_on_position_open: true        # ポジションオープン時通知
+  send_on_position_close: true       # ポジションクローズ時通知
   send_on_error: true                 # エラー時通知
   daily_summary_hour: 9               # 日次サマリー時刻（24時間形式）
   low_balance_threshold: 100          # 残高警告しきい値（USDT）
