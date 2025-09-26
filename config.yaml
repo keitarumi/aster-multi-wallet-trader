@@ -87,8 +87,5 @@ discord:
   # エラー発生時に通知
   send_on_error: true
 
-  # 日次サマリーを送信する時刻（24時間形式）
-  daily_summary_hour: 9
-
   # 残高警告しきい値（USDT）
   low_balance_threshold: 100

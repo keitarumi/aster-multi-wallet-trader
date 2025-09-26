@@ -98,7 +98,6 @@ discord:
   send_on_position_open: true        # ポジションオープン時通知
   send_on_position_close: true       # ポジションクローズ時通知
   send_on_error: true                 # エラー時通知
-  daily_summary_hour: 9               # 日次サマリー時刻（24時間形式）
   low_balance_threshold: 100          # 残高警告しきい値（USDT）
 ```
 
@@ -204,7 +203,6 @@ SOL: 最小 1 SOL または $100 USDT の大きい方
 - **trades テーブル**: 個別の売買記録
 - **positions テーブル**: ヘッジポジション情報
 - **position_trades テーブル**: ポジションと取引の紐付け
-- **daily_summary テーブル**: 日次統計
 
 #### 5.2 パフォーマンス分析
 ```sql
@@ -221,7 +219,6 @@ FROM positions WHERE status = 'CLOSED';
 - ポジションクローズ時
 - エラー発生時
 - 定期レポート（1時間毎）
-- 日次サマリー（毎朝9時）
 
 #### 6.2 通知内容
 ```

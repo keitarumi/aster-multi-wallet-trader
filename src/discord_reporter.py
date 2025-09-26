@@ -315,17 +315,12 @@ class DiscordReporter:
     def run_scheduler(self):
         """Run scheduled reports"""
         interval = self.config['discord']['report_interval_minutes']
-        daily_hour = self.config['discord']['daily_summary_hour']
 
         # Schedule periodic reports
         schedule.every(interval).minutes.do(self.send_balance_report)
 
-        # Schedule daily summary
-        schedule.every().day.at(f"{daily_hour:02d}:00").do(self.send_balance_report)
-
         print(f"📅 Scheduler started:")
         print(f"   - Reports every {interval} minutes")
-        print(f"   - Daily summary at {daily_hour}:00")
 
         # Send initial report
         self.send_balance_report()
