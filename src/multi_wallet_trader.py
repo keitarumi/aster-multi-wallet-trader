@@ -17,7 +17,11 @@ import requests
 from colorama import init, Fore, Style
 from dotenv import load_dotenv
 import json
-from database_manager import DatabaseManager
+try:
+    from database_manager import DatabaseManager
+except ImportError:
+    # When imported from outside src directory
+    from src.database_manager import DatabaseManager
 
 init(autoreset=True)
 load_dotenv()
@@ -58,6 +62,39 @@ class DiscordNotifier:
             "footer": {"text": "Aster Multi-Wallet Trader"}
         }
         self.send_embed(embed)
+
+    def send_balance_report(self, wallets):
+        """Send balance report to Discord"""
+        if not self.webhook_url:
+            return
+
+        fields = []
+        total_balance = 0
+
+        for wallet_id, wallet in wallets.items():
+            balance = wallet.get_account_balance()
+            if balance is not None:
+                total_balance += balance
+                emoji = "🟢" if balance >= 100 else "🔴"
+                fields.append({
+                    "name": wallet.name,
+                    "value": f"{emoji} ${balance:.2f} USDT",
+                    "inline": True
+                })
+
+        embed = {
+            "title": "💰 Wallet Balance Report",
+            "color": 0x00ff00 if total_balance >= len(wallets) * 100 else 0xff0000,
+            "fields": fields,
+            "footer": {
+                "text": f"Total: ${total_balance:.2f} USDT | Wallets: {len(wallets)}",
+                "icon_url": "https://cdn.discordapp.com/embed/avatars/0.png"
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+
+        self.send_embed(embed)
+        logging.info(f"Balance report sent to Discord (Total: ${total_balance:.2f})")
 
     def send_position_close_notification(self, symbol: str, positions: list, wallets: dict):
         """Send notification when position is closed"""
@@ -189,6 +226,7 @@ class MultiWalletTrader:
         self.discord_notifier = self._setup_discord()
         self.db_manager = DatabaseManager()  # Initialize database manager
         self.shutdown_flag = False  # Flag for graceful shutdown
+        self.last_report_time = datetime.now()  # Track last report time
 
         # Register signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -860,6 +898,22 @@ class MultiWalletTrader:
         # Use team-based trading
         self.open_team_hedge_position(symbol)
 
+    def check_and_send_balance_report(self):
+        """Check if it's time to send a balance report"""
+        if not self.discord_notifier:
+            return
+
+        # Get report interval from config (default 60 minutes)
+        report_interval_minutes = self.config.get('discord', {}).get('report_interval_minutes', 60)
+
+        # Check if enough time has passed
+        time_since_last_report = (datetime.now() - self.last_report_time).total_seconds() / 60
+
+        if time_since_last_report >= report_interval_minutes:
+            logging.info(f"Sending scheduled balance report (interval: {report_interval_minutes} minutes)")
+            self.discord_notifier.send_balance_report(self.wallets)
+            self.last_report_time = datetime.now()
+
     def run(self):
         """Main trading loop"""
         logging.info(f"{Fore.MAGENTA}Starting Multi-Wallet Hedge Trading System{Style.RESET_ALL}")
@@ -870,9 +924,17 @@ class MultiWalletTrader:
         parallel_mode = self.config['trading_params'].get('parallel_trading_enabled', False)
         logging.info(f"Parallel trading: {Fore.GREEN + 'ENABLED' if parallel_mode else Fore.YELLOW + 'DISABLED'}{Style.RESET_ALL}")
 
+        # Send initial balance report
+        if self.discord_notifier:
+            logging.info("Sending initial balance report...")
+            self.discord_notifier.send_balance_report(self.wallets)
+
         try:
             while not self.shutdown_flag:
                 self.check_positions_for_closing()
+
+                # Check if it's time to send balance report
+                self.check_and_send_balance_report()
 
                 # Check for shutdown before opening new positions
                 if self.shutdown_flag:

@@ -3,8 +3,8 @@ trading_params:
   # 取引対象の通貨ペア一覧
   symbols:
     - BTCUSDT
-    - ETHUSDT
-    - ASTERUSDT
+    # - ETHUSDT
+    # - ASTERUSDT
     # - SOLUSDT
 
   # 並列トレードモード（複数ウォレットペアで同時に取引）
@@ -14,10 +14,10 @@ trading_params:
   # シンボルごとのポジションサイズ（USDT建て）
   # 各シンボルで異なるサイズを設定可能
   position_sizes:
-    BTCUSDT: 10000      
+    BTCUSDT: 5000      
     ETHUSDT: 2000      
     ASTERUSDT: 1000   
-    SOLUSDT: 100      
+    # SOLUSDT: 100      
 
   # デフォルトポジションサイズ（上記で指定されていないシンボル用）
   default_position_size_usdt: 500
@@ -26,10 +26,10 @@ trading_params:
   position_size_variance: 0.3
 
   # 最小ポジション保有時間（分）
-  min_hold_time_minutes: 1
+  min_hold_time_minutes: 300
 
   # 最大ポジション保有時間（分）
-  max_hold_time_minutes: 1
+  max_hold_time_minutes: 600
 
   # 並列取引用（未実装用のパラメータ）
   # # 取引間の最小待機時間（秒）
